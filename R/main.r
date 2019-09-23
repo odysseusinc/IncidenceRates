@@ -7,11 +7,3 @@ NULL
 .onLoad <- function(libname, pkgname) {
   rJava::.jpackage(pkgname, lib.loc = libname)
 }
-
-
-#source('run_ir_analysis.r')
-#workDir <- getwd()
-
-#cohorts <- list('sql/Angioedema across levetriacetam new users_2_target.sql', 'sql/Angioedema across levetriacetam new users_5_target.sql', 'sql/Angioedema across levetriacetam new users_3164_outcome.sql')
-
-#run_ir_analysis(workDir, 3178, 'analysisDescription_3178.json', cohorts, 'postgresql', 'jdbc:postgresql://odysseusovh03.odysseusinc.com:5439/synpuf', 'ohdsi', 'ohdsi', 'public', 'results', 'public')
