@@ -1,6 +1,6 @@
 #
 #' @export
-run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, connectionString, user, password, cdmDatabaseSchema, resultsDatabaseSchema, cohortsDatabaseSchema, cohortTable = "cohort", outcomeTable = "cohort"){
+run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, connectionString, user, password, driversPath, cdmDatabaseSchema, resultsDatabaseSchema, cohortsDatabaseSchema, cohortTable = "cohort", outcomeTable = "cohort"){
   start.time <- Sys.time()
   library(SqlRender)
   library(DatabaseConnector)
@@ -12,7 +12,8 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   connectionDetails <- DatabaseConnector::createConnectionDetails(dbms = dbms,
                                                                   connectionString = connectionString,
                                                                   user = user,
-                                                                  password = password)
+                                                                  password = password,
+                                                                  pathToDriver = driversPath)
   connection <- DatabaseConnector::connect(connectionDetails)
 
   query <- SqlRender::readSql(system.file("sql/sql_server", "delete_strata.sql", package = "IncidenceRateSkeleton"))
