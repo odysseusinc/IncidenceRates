@@ -18,7 +18,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
 
   query <- SqlRender::readSql(system.file("sql/sql_server", "delete_strata.sql", package = "IncidenceRateSkeleton"))
   query <- SqlRender::renderSql(query, tableQualifier = resultsDatabaseSchema, analysis_id = analysisId)$sql
-  query <- SqlRender::translateSql(query, targetDialect = connectionDetails$dbms)$sql
+  query <- SqlRender::translate(query, targetDialect = connectionDetails$dbms, oracleTempSchema=resultsDatabaseSchema)
 
   DatabaseConnector::executeSql(connection, query)
 
@@ -32,7 +32,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
                      target_database_schema = cohortsDatabaseSchema,
                      target_cohort_table = cohortTable,
                      output = "output")$sql
-    sql <- translateSql(sql, targetDialect = connectionDetails$dbms)$sql
+    sql <- translate(sql, targetDialect = connectionDetails$dbms, oracleTempSchema=resultsDatabaseSchema)
     executeSql(connection, sql)
   }
 
@@ -48,13 +48,13 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
                                   strata_sequence = i,
                                   name = strata[[1]]$name,
                                   description = "")$sql
-    query <- SqlRender::translateSql(query, targetDialect = connectionDetails$dbms)$sql
+    query <- SqlRender::translate(query, targetDialect = connectionDetails$dbms, oracleTempSchema=resultsDatabaseSchema)
     DatabaseConnector::executeSql(connection, query)
   }
 
   #source('ir_analysis_query_builder.r')
   expressionSql <- buildAnalysisQuery(analysisDescription, analysisId, dbms, cdmDatabaseSchema, resultsDatabaseSchema)
-  translatedSql <- translateSql(expressionSql, targetDialect = dbms)$sql
+  translatedSql <- translate(expressionSql, targetDialect = dbms, oracleTempSchema=resultsDatabaseSchema)
   DatabaseConnector::executeSql(connection, translatedSql)
 
   # Save results
@@ -63,7 +63,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   sql <- SqlRender::renderSql(sql,
                    resultsSchema = resultsDatabaseSchema,
                    id = analysisId)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=resultsDatabaseSchema)
   result <- DatabaseConnector::querySql(connection, sql)
   write.csv(result, file.path(workDir, "ir_summary.csv"), na = "")
 
@@ -72,7 +72,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   sql <- SqlRender::renderSql(sql,
                               resultsSchema = resultsDatabaseSchema,
                               analysisId = analysisId)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=resultsDatabaseSchema)
   dist <- DatabaseConnector::querySql(connection, sql)
   write.csv(dist, file.path(workDir, "ir_dist.csv"), na = "")
 
@@ -81,7 +81,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   sql <- SqlRender::renderSql(sql,
                             results_database_schema = resultsDatabaseSchema,
                             analysis_id = analysisId)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=resultsDatabaseSchema)
   strata <- DatabaseConnector::querySql(connection, sql)
   write.csv(strata, file.path(workDir, "ir_strata.csv"), na = "")
 
