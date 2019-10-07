@@ -868,7 +868,7 @@ getCodesetQuery <- function(conceptSets){
   return(sql)
 }
 
-buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, resultsDatabaseSchema){
+buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, resultsDatabaseSchema, tempDatabaseSchema=resultsDatabaseSchema){
 
   cohortIdStatements <- list()
   for(i in seq_along(analysisExpression$targetIds)){
@@ -951,6 +951,7 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
                               results_database_schema = resultsDatabaseSchema)$sql
   sql = gsub("@cdm_database_schema", cdmSchema, sql)
   sql = gsub("@results_database_schema", resultsDatabaseSchema, sql)
+  sql = gsub("@temp_database_schema", tempDatabaseSchema, sql)
   sql = gsub("@analysisId", toString(analysisId), sql)
 #  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
   return(sql)

@@ -18,12 +18,12 @@ cteCohortData(target_id, outcome_id, subject_id, cohort_start_date, cohort_end_d
   from cteCohortCombos combos
   join (
     select cohort_definition_id, subject_id, cohort_start_date, cohort_end_date, @adjustedStart as adjusted_start_date, @adjustedEnd as adjusted_end_date
-    FROM @results_database_schema.cohort
+    FROM @temp_database_schema.@cohort_table
   ) t on t.cohort_definition_id = combos.target_id
   join @cdm_database_schema.observation_period op on t.subject_id = op.person_id and t.cohort_start_date between op.observation_period_start_date and op.observation_period_end_date
   left join (
     select cohort_definition_id, subject_id, min(cohort_start_date) as cohort_start_date 
-    from @results_database_schema.cohort
+    from @temp_database_schema.@cohort_table
     GROUP BY cohort_definition_id, subject_id
   ) O on o.cohort_definition_id = combos.outcome_id
     and t.subject_id = o.subject_id
@@ -53,7 +53,7 @@ cteEndDates (target_id, outcome_id, subject_id, cohort_start_date, followup_end,
       join cteCohortData t on combos.target_id = t.target_id and combos.outcome_id = t.outcome_id
       join (
         select cohort_definition_id, subject_id, min(cohort_start_date) as cohort_start_date 
-        from @results_database_schema.cohort
+        from @temp_database_schema.@cohort_table
         GROUP BY cohort_definition_id, subject_id
       ) O on o.cohort_definition_id = combos.outcome_id and t.subject_id = o.subject_id
       where o.cohort_start_date > t.adjusted_start_date
@@ -78,9 +78,20 @@ INTO #time_at_risk
 from cteRawData
 ;
 
--- from here, take all the people's person_id, start_date, end_date, create an 'events table' 
-select row_number() over (partition by P.person_id order by P.start_date) as event_id, P.person_id, P.start_date, P.end_date, P.op_start_date, P.op_end_date
-INTO #analysis_events
+-- from here, take all the people's person_id, start_date, end_date, create an 'events table'
+CREATE TABLE #analysis_events (
+  event_id BIGINT,
+  person_id BIGINT,
+  start_date DATE,
+  end_date DATE,
+  op_start_date DATE,
+  op_end_date DATE,
+  TARGET_CONCEPT_ID BIGINT,
+  visit_occurrence_id BIGINT
+);
+
+INSERT INTO #analysis_events (event_id, person_id, start_date, end_date, op_start_date, op_end_date, TARGET_CONCEPT_ID, visit_occurrence_id)
+select row_number() over (partition by P.person_id order by P.start_date) as event_id, P.person_id, P.start_date, P.end_date, P.op_start_date, P.op_end_date, CAST(NULL as bigint) as TARGET_CONCEPT_ID, CAST(NULL as bigint) as visit_occurrence_id
 FROM
 (
   select distinct T.subject_id as person_id, T.cohort_start_date as start_date, T.cohort_end_date as end_date, OP.observation_period_start_date as op_start_date, OP.observation_period_end_date as op_end_date
@@ -105,9 +116,9 @@ create table #strataCohorts
 DELETE FROM @results_database_schema.ir_analysis_result where analysis_id = @analysisId;
 
 INSERT INTO @results_database_schema.ir_analysis_result (analysis_id, target_id, outcome_id, strata_mask, person_count, time_at_risk, cases)
-select @analysisId as analysis_id, T.target_id, T.outcome_id, E.strata_mask,
+select @analysisId as analysis_id, T.target_id, T.outcome_id, CAST(E.strata_mask AS bigint),
   COUNT(subject_id) as person_count, 
-  sum(1.0 * time_at_risk / 365.25) as time_at_risk, 
+  CAST(sum(1.0 * time_at_risk / 365.25) AS BIGINT) as time_at_risk,
   sum(is_case) as cases
 from #time_at_risk T
 JOIN (
@@ -123,7 +134,7 @@ GROUP BY T.target_id, T.outcome_id, E.strata_mask
 -- calculate the individual strata counts from the raw person data. Rows from #strataCohorts are used to find counts for each strata
 delete from @results_database_schema.ir_analysis_strata_stats where analysis_id = @analysisId;
 insert into @results_database_schema.ir_analysis_strata_stats (analysis_id, target_id, outcome_id, strata_sequence, person_count, time_at_risk, cases)
-select irs.analysis_id, combos.target_id, combos.outcome_id, irs.strata_sequence, coalesce(T.person_count, 0) as person_count, coalesce(T.time_at_risk, 0) as time_at_risk, coalesce(T.cases, 0) as cases
+select irs.analysis_id, combos.target_id, combos.outcome_id, irs.strata_sequence, coalesce(T.person_count, 0) as person_count, CAST(coalesce(T.time_at_risk, 0) AS bigint) as time_at_risk, coalesce(T.cases, 0) as cases
 from @results_database_schema.ir_strata irs
 cross join (
   select t.cohort_id as target_id, o.cohort_id as outcome_id
@@ -191,8 +202,8 @@ select
   o.outcome_id,
   o.strata_sequence,
   o.total,
-  o.avg_value,
-  coalesce(o.stdev_value, 0.0) as stdev_value,
+  CAST(o.avg_value AS FLOAT) as avg_value,
+  CAST(coalesce(o.stdev_value, 0.0) AS FLOAT) as stdev_value,
   o.min_value,
   MIN(case when p.accumulated >= .10 * o.total then count_value else o.max_value end) as p10_value,
   MIN(case when p.accumulated >= .25 * o.total then count_value else o.max_value end) as p25_value,
@@ -270,8 +281,8 @@ select
   o.outcome_id,
   o.strata_sequence,
   o.total,
-  o.avg_value,
-  coalesce(o.stdev_value, 0.0) as stdev_value,
+  CAST(o.avg_value AS FLOAT) as avg_value,
+  CAST(coalesce(o.stdev_value, 0.0) AS FLOAT) as stdev_value,
   o.min_value,
   MIN(case when p.accumulated >= .10 * o.total then count_value else o.max_value end) as p10_value,
   MIN(case when p.accumulated >= .25 * o.total then count_value else o.max_value end) as p25_value,
@@ -314,3 +325,5 @@ DROP TABLE #cohorts;
 TRUNCATE TABLE #time_at_risk;
 DROP TABLE #time_at_risk;
 
+TRUNCATE TABLE #analysis_events;
+DROP TABLE #analysis_events;

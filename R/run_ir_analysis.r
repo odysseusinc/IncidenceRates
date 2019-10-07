@@ -53,7 +53,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   }
 
   #source('ir_analysis_query_builder.r')
-  expressionSql <- buildAnalysisQuery(analysisDescription, analysisId, dbms, cdmDatabaseSchema, resultsDatabaseSchema)
+  expressionSql <- buildAnalysisQuery(analysisDescription, analysisId, dbms, cdmDatabaseSchema, resultsDatabaseSchema, tempDatabaseSchema)
   translatedSql <- translate(expressionSql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   DatabaseConnector::executeSql(connection, translatedSql)
 
