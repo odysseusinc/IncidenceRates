@@ -66,22 +66,48 @@ convertWindow <- function(window){
   return(w)
 }
 
+convertToLong <-function(value){
+  javaClassName <-  "java/lang/Long"
+  result <- if (is.null(value)) .jnull(class = javaClassName)
+  else .jnew(javaClassName, toString(value))
+  return(result)
+}
+
+convertToString<-function(value){
+  javaClassName <-  "java/lang/String"
+  result <- if (is.null(value)) .jnull(class = javaClassName)
+  else .jnew(javaClassName, toString(value))
+  return(result)
+}
+
+convertToInteger<-function(value){
+  javaClassName <-  "java/lang/Integer"
+  result <- if (is.null(value)) .jnull(class =javaClassName)
+  else .jnew(javaClassName, toString(value))
+  return(result)
+}
+
+convertToArray <- function(value, javaClassName){
+  result <- if (is.null(value) || length(value) == 0 )  .jarray(list(), javaClassName)
+  else .jarray(value, contents.class = javaClassName)
+  return(result)
+}
+
 convertConcept <- function(concept){
   c <- .jnew("org/ohdsi/circe/vocabulary/Concept")
-  conceptId <- .jnew("java/lang/Long", toString(concept$CONCEPT_ID))
-  `.jfield<-`(c, 'conceptId', conceptId)
-  `.jfield<-`(c, 'conceptName', concept$CONCEPT_NAME)
-  `.jfield<-`(c, 'standardConcept', concept$STANDARD_CONCEPT)
-  `.jfield<-`(c, 'invalidReason', concept$INVALID_REASON)
-  `.jfield<-`(c, 'conceptCode', concept$CONCEPT_CODE)
-  `.jfield<-`(c, 'domainId', toString(concept$DOMAIN_ID))
-  `.jfield<-`(c, 'vocabularyId', toString(concept$VOCABULARY_ID))
-  `.jfield<-`(c, 'conceptClassId', toString(concept$CONCEPT_CLASS_ID))
+  `.jfield<-`(c, 'conceptId', convertToLong(concept$CONCEPT_ID))
+  `.jfield<-`(c, 'conceptName', convertToString(concept$CONCEPT_NAME))
+  `.jfield<-`(c, 'standardConcept', convertToString(concept$STANDARD_CONCEPT))
+  `.jfield<-`(c, 'invalidReason', convertToString(concept$INVALID_REASON))
+  `.jfield<-`(c, 'conceptCode', convertToString(concept$CONCEPT_CODE))
+  `.jfield<-`(c, 'domainId', convertToString(concept$DOMAIN_ID))
+  `.jfield<-`(c, 'vocabularyId', convertToString(concept$VOCABULARY_ID))
+  `.jfield<-`(c, 'conceptClassId', convertToString(concept$CONCEPT_CLASS_ID))
   return(c)
 }
 
 convertConceptArray <- function(concepts){
-  cc <- c()
+  cc <- list()
   for(i in seq_along(concepts)){
     concept <- concepts[[i]]
     cc[[i]] <- convertConcept(concept)
@@ -90,7 +116,11 @@ convertConceptArray <- function(concepts){
 }
 
 convertDateRange <- function(dateRange){
-  dr <- .jnew("org/ohdsi/circe/cohortdefinition/DateRange")
+  javaClassName <-  "org/ohdsi/circe/cohortdefinition/DateRange"
+  if (is.null(dateRange)) {
+    return (.jnull(class = javaClassName))
+  }
+  dr <- .jnew(javaClassName)
   `.jfield<-`(dr, 'value', dateRange$Value)
   `.jfield<-`(dr, 'op', dateRange$Op)
   `.jfield<-`(dr, 'extent', dateRange$Extent)
@@ -742,8 +772,7 @@ convertCriteria <- function(criteria){
 convertStrata <- function(strata){
   group <- .jnew("org/ohdsi/circe/cohortdefinition/CriteriaGroup")
   `.jfield<-`(group, "type", strata$Type)
-  count <- .jnew("java/lang/Integer", as.integer(strata$Count))
-  `.jfield<-`(group, "count", count)
+  `.jfield<-`(group, "count", convertToInteger(strata$Count))
 
   # CriteriaList
   criteriaList <- list()
@@ -772,7 +801,7 @@ convertStrata <- function(strata){
 
     criteriaList[[i]] <- cc
   }
-  `.jfield<-`(group, 'criteriaList', .jarray(criteriaList, contents.class = "org/ohdsi/circe/cohortdefinition/CorelatedCriteria"))
+  `.jfield<-`(group, 'criteriaList', convertToArray(criteriaList, "org/ohdsi/circe/cohortdefinition/CorelatedCriteria"))
 
   # DemographicCriteriaList
   demographicCriteria <- list()
@@ -780,15 +809,17 @@ convertStrata <- function(strata){
     criteria <- strata$DemographicCriteria[[i]]
     dc <- .jnew("org/ohdsi/circe/cohortdefinition/DemographicCriteria")
     age <- .jnew("org/ohdsi/circe/cohortdefinition/NumericRange")
-    `.jfield<-`(age, 'value', criteria$Age$Value)
-    `.jfield<-`(age, 'op', criteria$Age$Op)
-    `.jfield<-`(age, 'extent', criteria$Age$Extent)
-    `.jfield<-`(dc, 'age', age)
+    if (!is.null(criteria$Age)) {
+        `.jfield<-`(age, 'value', criteria$Age$Value)
+        `.jfield<-`(age, 'op', criteria$Age$Op)
+        `.jfield<-`(age, 'extent', criteria$Age$Extent)
+        `.jfield<-`(dc, 'age', age)
+     }
     `.jfield<-`(dc, 'gender', convertConceptArray(criteria$Gender))
     `.jfield<-`(dc, 'race', convertConceptArray(criteria$Race))
     `.jfield<-`(dc, 'ethnicity', convertConceptArray(criteria$Ethnicity))
-    `.jfield<-`(dc, 'occurenceStartDate', convertDateRange(criteria$OccurenceStartDate))
-    `.jfield<-`(dc, 'occurenceEndDate', convertDateRange(criteria$OccurenceEndDate))
+    `.jfield<-`(dc, 'occurrenceStartDate', convertDateRange(criteria$OccurenceStartDate))
+    `.jfield<-`(dc, 'occurrenceEndDate', convertDateRange(criteria$OccurenceEndDate))
     demographicCriteria[[i]] <- dc
   }
   `.jfield<-`(group, 'demographicCriteriaList', .jarray(demographicCriteria, contents.class = "org/ohdsi/circe/cohortdefinition/DemographicCriteria"))
@@ -800,7 +831,7 @@ convertStrata <- function(strata){
     g <- convertStrata(gr)
     groups[[i]] <- g
   }
-  `.jfield<-`(group, 'groups', .jarray(groups, contents.class = "org/ohdsi/circe/cohortdefinition/CriteriaGroup"))
+  `.jfield<-`(group, 'groups', convertToArray(groups, "org/ohdsi/circe/cohortdefinition/CriteriaGroup"))
 
   return(group);
 }
@@ -930,6 +961,9 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   for(i in seq_along(analysisExpression$strata)){
     strata <- analysisExpression$strata[[i]]
     cg <- strata[[1]]$expression
+    if (is.null(cg)){
+      cg<-strata$expression
+    }
     st <- getStrataQuery(cg, dbms)
     stratumInsert <- gsub("@strata_sequence", i, st)
     strataInsert[[i]] <- stratumInsert
