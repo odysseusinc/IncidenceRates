@@ -5,6 +5,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   library(SqlRender)
   library(DatabaseConnector)
   library(rJava)
+  library(purrr)
   # Data extraction ---
   library("rjson")
   analysisDescription <- fromJSON(paste(readLines(system.file("settings", "StudySpecification.json", package = "IncidenceRateSkeleton")), collapse = ""))
@@ -53,7 +54,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   }
 
   #source('ir_analysis_query_builder.r')
-  expressionSql <- buildAnalysisQuery(analysisDescription, analysisId, dbms, cdmDatabaseSchema, resultsDatabaseSchema)
+  expressionSql <- buildAnalysisQuery(analysisDescription, analysisId, dbms, cdmDatabaseSchema, resultsDatabaseSchema, tempDatabaseSchema)
   translatedSql <- translate(expressionSql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   DatabaseConnector::executeSql(connection, translatedSql)
 

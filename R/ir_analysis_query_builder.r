@@ -1,23 +1,23 @@
 library(rJava)
-
+library(purrr)
 #
 #' @export
-getCorelatedCriteriaQuery <- function(corelatedCriteria, eventTable, dbms){
+getCorelatedCriteriaQuery <- function(corelatedCriteria, eventTable, dbms, tempDatabaseSchema){
   sql <- SqlRender::readSql(system.file("sql/sql_server", "additionalQuery.sql", package = "IncidenceRateSkeleton"))
-  sql <- SqlRender::renderSql(sql)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::render(sql)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return(sql)
 }
 
 #
 #' @export
-getCriteriaGroupQuery <- function(group, eventTable, dbms){
+getCriteriaGroupQuery <- function(group, eventTable, dbms, tempDatabaseSchema){
   sql <- SqlRender::readSql(system.file("sql/sql_server", "groupQuery.sql", package = "IncidenceRateSkeleton"))
 
   additionalCriteriaQueries <- c()
   for(i in seq_along(group$CriteriaList)){
     cc <- group$CriteriaList[i]
-    sql <- getCorelatedCriteriaQuery(cc, eventTable, dbms)
+    sql <- getCorelatedCriteriaQuery(cc, eventTable, dbms,  tempDatabaseSchema)
     sql <- gsub("@indexId", i, sql)
     additionalCriteriaQueries[[i]] <- sql
   }
@@ -31,7 +31,7 @@ getCriteriaGroupQuery <- function(group, eventTable, dbms){
   n <- length(additionalCriteriaQueries)
   for(i in seq_along(group$Groups)){
     g <- group$Groups[[i]]
-    sql <- getCriteriaGroupQuery(g, eventTable, dbms)
+    sql <- getCriteriaGroupQuery(g, eventTable, dbms,  tempDatabaseSchema)
     sql <- gsub("@indexId", i + n, sql)
     additionalCriteriaQueries[[i + n]] <- sql
   }
@@ -40,8 +40,8 @@ getCriteriaGroupQuery <- function(group, eventTable, dbms){
     sql <- gsub("@criteriaQueries", paste(additionalCriteriaQueries, collapse = "\nUNION ALL\n"))
   }
 
-  sql <- SqlRender::renderSql(sql)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::render(sql)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return(sql)
 }
 
@@ -66,31 +66,64 @@ convertWindow <- function(window){
   return(w)
 }
 
+convertTo <-function(value, javaClassName){
+  result <- if (is.null(value)) .jnull(class = javaClassName)
+  else .jnew(javaClassName, toString(value))
+  return(result)
+}
+
+convertToLong <-function(value){
+  return(convertTo(value, "java/lang/Long"))
+}
+
+convertToString<-function(value){
+  return(convertTo(value, "java/lang/String"))
+}
+
+convertToInteger<-function(value){
+  return(convertTo(value, "java/lang/Integer"))
+}
+
+convertToArray <- function(value, javaClassName){
+  result <- if (is.null(value) || length(value) == 0 )  .jarray(list(), javaClassName)
+  else .jarray(value, contents.class = javaClassName)
+  return(result)
+}
+
+convertStrataToSql <- function(strata, i, dbms, tempDatabaseSchema) {
+  cg <- strata[[1]]$expression
+  if (is.null(cg)){
+    cg<-strata$expression
+  }
+  st <- getStrataQuery(cg, dbms, tempDatabaseSchema)
+  stratumInsert <- gsub("@strata_sequence", i, st)
+  return(stratumInsert)
+}
+
 convertConcept <- function(concept){
   c <- .jnew("org/ohdsi/circe/vocabulary/Concept")
-  conceptId <- .jnew("java/lang/Long", toString(concept$CONCEPT_ID))
-  `.jfield<-`(c, 'conceptId', conceptId)
-  `.jfield<-`(c, 'conceptName', concept$CONCEPT_NAME)
-  `.jfield<-`(c, 'standardConcept', concept$STANDARD_CONCEPT)
-  `.jfield<-`(c, 'invalidReason', concept$INVALID_REASON)
-  `.jfield<-`(c, 'conceptCode', concept$CONCEPT_CODE)
-  `.jfield<-`(c, 'domainId', toString(concept$DOMAIN_ID))
-  `.jfield<-`(c, 'vocabularyId', toString(concept$VOCABULARY_ID))
-  `.jfield<-`(c, 'conceptClassId', toString(concept$CONCEPT_CLASS_ID))
+  `.jfield<-`(c, 'conceptId', convertToLong(concept$CONCEPT_ID))
+  `.jfield<-`(c, 'conceptName', convertToString(concept$CONCEPT_NAME))
+  `.jfield<-`(c, 'standardConcept', convertToString(concept$STANDARD_CONCEPT))
+  `.jfield<-`(c, 'invalidReason', convertToString(concept$INVALID_REASON))
+  `.jfield<-`(c, 'conceptCode', convertToString(concept$CONCEPT_CODE))
+  `.jfield<-`(c, 'domainId', convertToString(concept$DOMAIN_ID))
+  `.jfield<-`(c, 'vocabularyId', convertToString(concept$VOCABULARY_ID))
+  `.jfield<-`(c, 'conceptClassId', convertToString(concept$CONCEPT_CLASS_ID))
   return(c)
 }
 
 convertConceptArray <- function(concepts){
-  cc <- c()
-  for(i in seq_along(concepts)){
-    concept <- concepts[[i]]
-    cc[[i]] <- convertConcept(concept)
-  }
+  cc <- map(concepts, convertConcept)
   return(.jarray(cc, contents.class = 'org/ohdsi/circe/vocabulary/Concept'))
 }
 
 convertDateRange <- function(dateRange){
-  dr <- .jnew("org/ohdsi/circe/cohortdefinition/DateRange")
+  javaClassName <-  "org/ohdsi/circe/cohortdefinition/DateRange"
+  if (is.null(dateRange)) {
+    return (.jnull(class = javaClassName))
+  }
+  dr <- .jnew(javaClassName)
   `.jfield<-`(dr, 'value', dateRange$Value)
   `.jfield<-`(dr, 'op', dateRange$Op)
   `.jfield<-`(dr, 'extent', dateRange$Extent)
@@ -742,8 +775,7 @@ convertCriteria <- function(criteria){
 convertStrata <- function(strata){
   group <- .jnew("org/ohdsi/circe/cohortdefinition/CriteriaGroup")
   `.jfield<-`(group, "type", strata$Type)
-  count <- .jnew("java/lang/Integer", as.integer(strata$Count))
-  `.jfield<-`(group, "count", count)
+  `.jfield<-`(group, "count", convertToInteger(strata$Count))
 
   # CriteriaList
   criteriaList <- list()
@@ -772,7 +804,7 @@ convertStrata <- function(strata){
 
     criteriaList[[i]] <- cc
   }
-  `.jfield<-`(group, 'criteriaList', .jarray(criteriaList, contents.class = "org/ohdsi/circe/cohortdefinition/CorelatedCriteria"))
+  `.jfield<-`(group, 'criteriaList', convertToArray(criteriaList, "org/ohdsi/circe/cohortdefinition/CorelatedCriteria"))
 
   # DemographicCriteriaList
   demographicCriteria <- list()
@@ -780,15 +812,17 @@ convertStrata <- function(strata){
     criteria <- strata$DemographicCriteria[[i]]
     dc <- .jnew("org/ohdsi/circe/cohortdefinition/DemographicCriteria")
     age <- .jnew("org/ohdsi/circe/cohortdefinition/NumericRange")
-    `.jfield<-`(age, 'value', criteria$Age$Value)
-    `.jfield<-`(age, 'op', criteria$Age$Op)
-    `.jfield<-`(age, 'extent', criteria$Age$Extent)
-    `.jfield<-`(dc, 'age', age)
+    if (!is.null(criteria$Age)) {
+        `.jfield<-`(age, 'value', criteria$Age$Value)
+        `.jfield<-`(age, 'op', criteria$Age$Op)
+        `.jfield<-`(age, 'extent', criteria$Age$Extent)
+        `.jfield<-`(dc, 'age', age)
+     }
     `.jfield<-`(dc, 'gender', convertConceptArray(criteria$Gender))
     `.jfield<-`(dc, 'race', convertConceptArray(criteria$Race))
     `.jfield<-`(dc, 'ethnicity', convertConceptArray(criteria$Ethnicity))
-    `.jfield<-`(dc, 'occurenceStartDate', convertDateRange(criteria$OccurenceStartDate))
-    `.jfield<-`(dc, 'occurenceEndDate', convertDateRange(criteria$OccurenceEndDate))
+    `.jfield<-`(dc, 'occurrenceStartDate', convertDateRange(criteria$OccurenceStartDate))
+    `.jfield<-`(dc, 'occurrenceEndDate', convertDateRange(criteria$OccurenceEndDate))
     demographicCriteria[[i]] <- dc
   }
   `.jfield<-`(group, 'demographicCriteriaList', .jarray(demographicCriteria, contents.class = "org/ohdsi/circe/cohortdefinition/DemographicCriteria"))
@@ -800,12 +834,12 @@ convertStrata <- function(strata){
     g <- convertStrata(gr)
     groups[[i]] <- g
   }
-  `.jfield<-`(group, 'groups', .jarray(groups, contents.class = "org/ohdsi/circe/cohortdefinition/CriteriaGroup"))
+  `.jfield<-`(group, 'groups', convertToArray(groups, "org/ohdsi/circe/cohortdefinition/CriteriaGroup"))
 
   return(group);
 }
 
-getStrataQuery <- function(strataCriteria, dbms){
+getStrataQuery <- function(strataCriteria, dbms, tempDatabaseSchema){
 
   builder <- .jnew("org/ohdsi/circe/cohortdefinition/CohortExpressionQueryBuilder")
   jStrataCriteria <- convertStrata(strataCriteria)
@@ -818,10 +852,10 @@ getStrataQuery <- function(strataCriteria, dbms){
   additionalCriteriaQuery <- paste("\nJOIN (\n", criteria, ") AC on AC.person_id = pe.person_id AND AC.event_id = pe.event_id")
   indexId <- 0
   sql <- SqlRender::readSql(system.file("sql/sql_server", "strata.sql", package = "IncidenceRateSkeleton"))
-  sql <- SqlRender::renderSql(sql,
+  sql <- SqlRender::render(sql,
                               additionalCriteriaQuery = gsub("@indexId", "0", additionalCriteriaQuery),
-                              indexId = indexId)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+                              indexId = indexId)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return (sql)
 }
 
@@ -868,7 +902,7 @@ getCodesetQuery <- function(conceptSets){
   return(sql)
 }
 
-buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, resultsDatabaseSchema){
+buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, resultsDatabaseSchema, tempDatabaseSchema=resultsDatabaseSchema){
 
   cohortIdStatements <- list()
   for(i in seq_along(analysisExpression$targetIds)){
@@ -926,14 +960,8 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   codesetQuery = getCodesetQuery(analysisExpression$ConceptSets)
 #  write(paste("Codeset Query: ", codesetQuery), stdout())
 
-  strataInsert <- list()
-  for(i in seq_along(analysisExpression$strata)){
-    strata <- analysisExpression$strata[[i]]
-    cg <- strata[[1]]$expression
-    st <- getStrataQuery(cg, dbms)
-    stratumInsert <- gsub("@strata_sequence", i, st)
-    strataInsert[[i]] <- stratumInsert
-  }
+  strataInsert <- imap(analysisExpression$strata, function(strata, i) convertStrataToSql(strata, i, dbms, tempDatabaseSchema))
+
   strataCohortInserts <- paste(strataInsert, collapse = "\n")
 #  write(paste("Strata Cohort Inserts: ", strataCohortInserts), stdout())
 
@@ -943,15 +971,17 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   sql <- gsub("@cohortDataFilter", cohortDataFilter, sql)
   sql <- gsub("@codesetQuery", codesetQuery, sql)
   sql <- gsub("@EndDateUnions", endDateUnions, sql)
-  sql <- SqlRender::renderSql(sql,
+  sql <- SqlRender::render(sql,
                               results_database_schema = resultsDatabaseSchema,
                               adjustedStart = adjustedStart,
                               adjustedEnd = adjustedEnd,
                               cdm_database_schema = cdmSchema,
-                              results_database_schema = resultsDatabaseSchema)$sql
+                              results_database_schema = resultsDatabaseSchema)
   sql = gsub("@cdm_database_schema", cdmSchema, sql)
   sql = gsub("@results_database_schema", resultsDatabaseSchema, sql)
+  sql = gsub("@temp_database_schema", tempDatabaseSchema, sql)
   sql = gsub("@analysisId", toString(analysisId), sql)
+  sql = gsub("@cohort_table", "cohort", sql)
 #  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
   return(sql)
 }
