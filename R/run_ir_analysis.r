@@ -5,6 +5,7 @@ run_ir_analysis <- function(basicDir, analysisId, cohortDefinitions, dbms, conne
   library(SqlRender)
   library(DatabaseConnector)
   library(rJava)
+  library(purrr)
   # Data extraction ---
   library("rjson")
   analysisDescription <- fromJSON(paste(readLines(system.file("settings", "StudySpecification.json", package = "IncidenceRateSkeleton")), collapse = ""))

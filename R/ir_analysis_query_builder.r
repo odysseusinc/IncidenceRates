@@ -1,5 +1,5 @@
 library(rJava)
-
+library(purrr)
 #
 #' @export
 getCorelatedCriteriaQuery <- function(corelatedCriteria, eventTable, dbms, tempDatabaseSchema){
@@ -66,31 +66,38 @@ convertWindow <- function(window){
   return(w)
 }
 
-convertToLong <-function(value){
-  javaClassName <-  "java/lang/Long"
+convertTo <-function(value, javaClassName){
   result <- if (is.null(value)) .jnull(class = javaClassName)
   else .jnew(javaClassName, toString(value))
   return(result)
+}
+
+convertToLong <-function(value){
+  return(convertTo(value, "java/lang/Long"))
 }
 
 convertToString<-function(value){
-  javaClassName <-  "java/lang/String"
-  result <- if (is.null(value)) .jnull(class = javaClassName)
-  else .jnew(javaClassName, toString(value))
-  return(result)
+  return(convertTo(value, "java/lang/String"))
 }
 
 convertToInteger<-function(value){
-  javaClassName <-  "java/lang/Integer"
-  result <- if (is.null(value)) .jnull(class =javaClassName)
-  else .jnew(javaClassName, toString(value))
-  return(result)
+  return(convertTo(value, "java/lang/Integer"))
 }
 
 convertToArray <- function(value, javaClassName){
   result <- if (is.null(value) || length(value) == 0 )  .jarray(list(), javaClassName)
   else .jarray(value, contents.class = javaClassName)
   return(result)
+}
+
+convertStrataToSql <- function(strata, i, dbms, tempDatabaseSchema) {
+  cg <- strata[[1]]$expression
+  if (is.null(cg)){
+    cg<-strata$expression
+  }
+  st <- getStrataQuery(cg, dbms, tempDatabaseSchema)
+  stratumInsert <- gsub("@strata_sequence", i, st)
+  return(stratumInsert)
 }
 
 convertConcept <- function(concept){
@@ -107,11 +114,7 @@ convertConcept <- function(concept){
 }
 
 convertConceptArray <- function(concepts){
-  cc <- list()
-  for(i in seq_along(concepts)){
-    concept <- concepts[[i]]
-    cc[[i]] <- convertConcept(concept)
-  }
+  cc <- map(concepts, convertConcept)
   return(.jarray(cc, contents.class = 'org/ohdsi/circe/vocabulary/Concept'))
 }
 
@@ -957,17 +960,8 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   codesetQuery = getCodesetQuery(analysisExpression$ConceptSets)
 #  write(paste("Codeset Query: ", codesetQuery), stdout())
 
-  strataInsert <- list()
-  for(i in seq_along(analysisExpression$strata)){
-    strata <- analysisExpression$strata[[i]]
-    cg <- strata[[1]]$expression
-    if (is.null(cg)){
-      cg<-strata$expression
-    }
-    st <- getStrataQuery(cg, dbms,tempDatabaseSchema)
-    stratumInsert <- gsub("@strata_sequence", i, st)
-    strataInsert[[i]] <- stratumInsert
-  }
+  strataInsert <- imap(analysisExpression$strata, function(strata, i) convertStrataToSql(strata, i, dbms, tempDatabaseSchema))
+
   strataCohortInserts <- paste(strataInsert, collapse = "\n")
 #  write(paste("Strata Cohort Inserts: ", strataCohortInserts), stdout())
 
