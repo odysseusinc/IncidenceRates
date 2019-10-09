@@ -987,6 +987,7 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   sql = gsub("@results_database_schema", resultsDatabaseSchema, sql)
   sql = gsub("@temp_database_schema", tempDatabaseSchema, sql)
   sql = gsub("@analysisId", toString(analysisId), sql)
+  sql = gsub("@cohort_table", "cohort", sql)
 #  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
   return(sql)
 }
