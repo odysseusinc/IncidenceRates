@@ -2,22 +2,22 @@ library(rJava)
 
 #
 #' @export
-getCorelatedCriteriaQuery <- function(corelatedCriteria, eventTable, dbms){
+getCorelatedCriteriaQuery <- function(corelatedCriteria, eventTable, dbms, tempDatabaseSchema){
   sql <- SqlRender::readSql(system.file("sql/sql_server", "additionalQuery.sql", package = "IncidenceRateSkeleton"))
-  sql <- SqlRender::renderSql(sql)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::render(sql)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return(sql)
 }
 
 #
 #' @export
-getCriteriaGroupQuery <- function(group, eventTable, dbms){
+getCriteriaGroupQuery <- function(group, eventTable, dbms, tempDatabaseSchema){
   sql <- SqlRender::readSql(system.file("sql/sql_server", "groupQuery.sql", package = "IncidenceRateSkeleton"))
 
   additionalCriteriaQueries <- c()
   for(i in seq_along(group$CriteriaList)){
     cc <- group$CriteriaList[i]
-    sql <- getCorelatedCriteriaQuery(cc, eventTable, dbms)
+    sql <- getCorelatedCriteriaQuery(cc, eventTable, dbms,  tempDatabaseSchema)
     sql <- gsub("@indexId", i, sql)
     additionalCriteriaQueries[[i]] <- sql
   }
@@ -31,7 +31,7 @@ getCriteriaGroupQuery <- function(group, eventTable, dbms){
   n <- length(additionalCriteriaQueries)
   for(i in seq_along(group$Groups)){
     g <- group$Groups[[i]]
-    sql <- getCriteriaGroupQuery(g, eventTable, dbms)
+    sql <- getCriteriaGroupQuery(g, eventTable, dbms,  tempDatabaseSchema)
     sql <- gsub("@indexId", i + n, sql)
     additionalCriteriaQueries[[i + n]] <- sql
   }
@@ -40,8 +40,8 @@ getCriteriaGroupQuery <- function(group, eventTable, dbms){
     sql <- gsub("@criteriaQueries", paste(additionalCriteriaQueries, collapse = "\nUNION ALL\n"))
   }
 
-  sql <- SqlRender::renderSql(sql)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+  sql <- SqlRender::render(sql)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return(sql)
 }
 
@@ -836,7 +836,7 @@ convertStrata <- function(strata){
   return(group);
 }
 
-getStrataQuery <- function(strataCriteria, dbms){
+getStrataQuery <- function(strataCriteria, dbms, tempDatabaseSchema){
 
   builder <- .jnew("org/ohdsi/circe/cohortdefinition/CohortExpressionQueryBuilder")
   jStrataCriteria <- convertStrata(strataCriteria)
@@ -849,10 +849,10 @@ getStrataQuery <- function(strataCriteria, dbms){
   additionalCriteriaQuery <- paste("\nJOIN (\n", criteria, ") AC on AC.person_id = pe.person_id AND AC.event_id = pe.event_id")
   indexId <- 0
   sql <- SqlRender::readSql(system.file("sql/sql_server", "strata.sql", package = "IncidenceRateSkeleton"))
-  sql <- SqlRender::renderSql(sql,
+  sql <- SqlRender::render(sql,
                               additionalCriteriaQuery = gsub("@indexId", "0", additionalCriteriaQuery),
-                              indexId = indexId)$sql
-  sql <- SqlRender::translateSql(sql, targetDialect = dbms)$sql
+                              indexId = indexId)
+  sql <- SqlRender::translate(sql, targetDialect = dbms, oracleTempSchema=tempDatabaseSchema)
   return (sql)
 }
 
@@ -964,7 +964,7 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
     if (is.null(cg)){
       cg<-strata$expression
     }
-    st <- getStrataQuery(cg, dbms)
+    st <- getStrataQuery(cg, dbms,tempDatabaseSchema)
     stratumInsert <- gsub("@strata_sequence", i, st)
     strataInsert[[i]] <- stratumInsert
   }
@@ -977,12 +977,12 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
   sql <- gsub("@cohortDataFilter", cohortDataFilter, sql)
   sql <- gsub("@codesetQuery", codesetQuery, sql)
   sql <- gsub("@EndDateUnions", endDateUnions, sql)
-  sql <- SqlRender::renderSql(sql,
+  sql <- SqlRender::render(sql,
                               results_database_schema = resultsDatabaseSchema,
                               adjustedStart = adjustedStart,
                               adjustedEnd = adjustedEnd,
                               cdm_database_schema = cdmSchema,
-                              results_database_schema = resultsDatabaseSchema)$sql
+                              results_database_schema = resultsDatabaseSchema)
   sql = gsub("@cdm_database_schema", cdmSchema, sql)
   sql = gsub("@results_database_schema", resultsDatabaseSchema, sql)
   sql = gsub("@temp_database_schema", tempDatabaseSchema, sql)
