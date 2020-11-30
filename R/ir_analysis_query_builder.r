@@ -46,7 +46,7 @@ getCriteriaGroupQuery <- function(group, eventTable, dbms, tempDatabaseSchema){
 }
 
 convertWindowEndpoint <- function(endpoint){
-  w <- .jnew("org/ohdsi/circe/cohortdefinition/Endpoint")
+  w <- .jnew("org/ohdsi/circe/cohortdefinition/Window$Endpoint")
   if (!is.null(endpoint$Days)){
     days <- .jnew("java/lang/Integer", toString(endpoint$Days))
     `.jfield<-`(w, 'days', days)
@@ -538,8 +538,10 @@ convertCriteria <- function(criteria){
       rangeHighRatio <- convertNumericRange(measurement$RangeHighRatio)
       `.jfield<-`(c, 'rangeHighRatio', rangeHighRatio)
     }
-    abnormal <- .jnew("java/lang/Boolean", toString(isTRUE(measurement$Abnormal)))
-    .jfield(c, 'abnormal', abnormal)
+    if (!is.null(measurement$Abnormal)){
+      abnormal <- .jnew("java/lang/Boolean", toString(isTRUE(measurement$Abnormal)))
+      .jfield(c, 'abnormal', abnormal)
+    }
     if (!is.null(measurement$MeasurementSourceConcept)){
       measurementSourceConcept <- .jnew("java/lang/Integer", toString(measurement$MeasurementSourceConcept))
       `.jfield<-`(c, 'measurementSourceConcept', measurementSourceConcept)
@@ -976,6 +978,7 @@ buildAnalysisQuery <- function(analysisExpression, analysisId, dbms, cdmSchema, 
                               adjustedStart = adjustedStart,
                               adjustedEnd = adjustedEnd,
                               cdm_database_schema = cdmSchema,
+                              vocabulary_database_schema = cdmSchema,
                               results_database_schema = resultsDatabaseSchema)
   sql = gsub("@cdm_database_schema", cdmSchema, sql)
   sql = gsub("@results_database_schema", resultsDatabaseSchema, sql)
